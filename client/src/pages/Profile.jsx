@@ -180,10 +180,23 @@ export default function Profile() {
                   <span className="tiny muted">How far away a request can be and still reach your feed.</span>
                 </div>
               </div>
-              <label className="checkbox-row">
-                <input type="checkbox" checked={form.hasChronicIllness} onChange={set('hasChronicIllness')} />
-                <span className="small dim">I have a chronic illness that may affect donation eligibility.</span>
-              </label>
+              <div
+                className="panel"
+                style={form.hasChronicIllness ? { borderLeft: '3px solid var(--critical)' } : undefined}
+              >
+                <label className="checkbox-row">
+                  <input type="checkbox" checked={form.hasChronicIllness} onChange={set('hasChronicIllness')} />
+                  <span className="small">
+                    I have a chronic illness or condition that may affect donation eligibility.
+                  </span>
+                </label>
+                {form.hasChronicIllness && (
+                  <p className="small mt-1" style={{ color: 'var(--critical)' }}>
+                    While this is ticked you are <strong>hidden from every patient's search</strong>.
+                    Untick it and save if it does not apply to you.
+                  </p>
+                )}
+              </div>
             </>
           )}
 

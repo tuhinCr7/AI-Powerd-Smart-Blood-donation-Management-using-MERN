@@ -10,6 +10,57 @@ import { BLOOD_GROUPS, URGENCY_OPTIONS } from '../../utils/format.js';
 
 const RADIUS_OPTIONS = [5, 10, 25, 50, 100];
 
+/** Human labels for the exclusion counters the API returns. */
+const EXCLUSION_LABELS = {
+  markedUnavailable: 'have paused their availability',
+  declaredChronicIllness: 'declared a chronic illness',
+  withinCooldown: 'are inside the 90-day donation cooldown',
+  outsideAgeRange: 'are outside the 18–65 age range',
+  underWeight: 'are below the 45 kg minimum weight',
+  deactivated: 'have a deactivated account',
+  noLocationSaved: 'have no location saved',
+};
+
+/**
+ * Turns "no results" into an explanation. A thin list is almost never an empty
+ * register — it is usually a register full of people who each fail one filter.
+ */
+function ExclusionBreakdown({ excluded, radiusKm }) {
+  if (!excluded?.compatibleDonors) return null;
+
+  const reasons = Object.entries(EXCLUSION_LABELS)
+    .map(([key, label]) => [key, label, excluded[key] || 0])
+    .filter(([, , count]) => count > 0)
+    .sort((a, b) => b[2] - a[2]);
+
+  return (
+    <div className="panel" style={{ marginTop: '.5rem' }}>
+      <p className="small">
+        <strong>{excluded.compatibleDonors}</strong> donors in the register have a compatible blood
+        group
+        {excluded.inYourCity > 0 && <> ({excluded.inYourCity} in your city)</>}, but none reached
+        your list.
+      </p>
+      {reasons.length > 0 && (
+        <>
+          <p className="tiny muted mt-1">Of those compatible donors:</p>
+          <ul className="small dim mt-1" style={{ paddingLeft: '1.1rem' }}>
+            {reasons.map(([key, label, count]) => (
+              <li key={key}>
+                <strong className="tabular">{count}</strong> {label}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <p className="tiny muted mt-2">
+        Counts overlap — one donor can fail more than one check. Donors outside your {radiusKm} km
+        radius are not counted here; widening the radius may surface more.
+      </p>
+    </div>
+  );
+}
+
 /**
  * The AI recommendation screen: filters on top, ranked donor cards below, and
  * a model card explaining what the ranking is actually doing.
@@ -102,6 +153,9 @@ export default function Matches() {
                 <br />
                 {state.meta.candidatesEvaluated} donors evaluated
                 {state.meta.usedGeoIndex ? ' using your saved location' : ' by city (no location saved)'}.
+                {state.meta.tierCounts?.exact > 0 && (
+                  <> <strong>{state.meta.tierCounts.exact}</strong> exact {filters.bloodGroup} matches, listed first.</>
+                )}
               </p>
             </div>
           )}
@@ -116,6 +170,28 @@ export default function Matches() {
             <h3 className="h3">{model.name} · v{model.version}</h3>
           </div>
           <p className="small dim mt-1">{model.approach}</p>
+
+          {model.bands && (
+            <>
+              <p className="label mt-3">Score bands — blood group decides which one you land in</p>
+              <div className="table-wrap mt-1">
+                <table className="data">
+                  <thead>
+                    <tr><th>Band</th><th className="num">Score</th><th>Meaning</th></tr>
+                  </thead>
+                  <tbody>
+                    {model.bands.map((b) => (
+                      <tr key={b.label}>
+                        <td><strong className="small">{b.label}</strong></td>
+                        <td className="num tabular">{b.band}</td>
+                        <td className="small dim">{b.detail}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
 
           <div className="grid grid-2 mt-3">
             <div>
@@ -151,11 +227,14 @@ export default function Matches() {
           {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} height={230} />)}
         </div>
       ) : state.results.length === 0 ? (
-        <EmptyState
-          icon={SearchX}
-          title="No eligible donors in range"
-          description="Try widening the search radius, or check that your city and location are set on your profile."
-        />
+        <div className="card">
+          <EmptyState
+            icon={SearchX}
+            title="No eligible donors in range"
+            description="Try widening the search radius, or check that your city and location are set on your profile."
+          />
+          <ExclusionBreakdown excluded={state.meta?.excluded} radiusKm={filters.radiusKm} />
+        </div>
       ) : (
         <div className="grid grid-3">
           {state.results.map((m) => (

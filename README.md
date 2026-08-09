@@ -95,10 +95,22 @@ npm run dev --prefix client
 
 `server/src/services/recommendation.service.js`
 
-The ranking is **explainable by design** — no black box. Every candidate is reduced to seven
-normalised features, combined with urgency-conditional weights, and passed through a logistic link
-to produce a "likely to respond" probability. Each result ships with its `features`, `reasons` and
-the `weights` used, which is exactly what the UI renders on the match card.
+The ranking is **explainable by design** — no black box — and it is **blood group first**:
+
+> The group match picks a non-overlapping score band; every other feature only orders donors
+> *inside* that band. An exact match therefore always outranks a merely compatible donor, however
+> close by the latter is.
+
+| Band | Score | Meaning |
+|---|---|---|
+| Exact match | 85–100 | Type-specific — same ABO and Rh (A+ → A+) |
+| Same ABO group | 70–85 | Right ABO, opposite Rh (A− → A+) |
+| Compatible group | 55–70 | Different ABO but transfusable (O+ → A+) |
+| Universal donor | 40–55 | O− to a non-O− recipient — ranked last so the scarcest stock is conserved for recipients with no alternative |
+
+Because the bands never overlap, the number on a card can't contradict the order the cards appear
+in. Each result ships with its `compatibility` band, `features`, `reasons` and the `weights` used,
+which is exactly what the UI renders on the match card.
 
 **Hard filters run first** (in MongoDB, so they use the indexes):
 
@@ -109,11 +121,10 @@ the `weights` used, which is exactly what the UI renders on the match card.
 - no declared chronic illness
 - inside the search radius (`$geoNear` on a `2dsphere` index)
 
-**Then the survivors are scored:**
+**Then the survivors are placed in a band, and these features order them within it:**
 
 | Feature | How it is computed |
 |---|---|
-| `compatibility` | Exact group = 1.0; compatible = 0.85; O⁻ to a non-O⁻ recipient = 0.72 so universal donors are conserved |
 | `proximity` | `exp(−distance / 12 km)` |
 | `readiness` | Time since last donation against the cooldown, saturating at 2× |
 | `reliability` | Beta-smoothed acceptance rate (prior: 2 accepted of 5 seen) |
@@ -121,9 +132,10 @@ the `weights` used, which is exactly what the UI renders on the match card.
 | `experience` | `log₁₀(1 + donations) / log₁₀(11)` |
 | `activity` | `exp(−daysSinceLastSeen / 14)` |
 
-**Urgency reweights the model.** A `critical` request pushes proximity to 0.34 and responsiveness
-to 0.17; a `low` one favours readiness and reliability instead. Weight tables live at the top of
-the service file.
+**Urgency reweights the within-band features.** A `critical` request pushes proximity to 0.46 and
+responsiveness to 0.21; a `low` one favours readiness and reliability instead. Crucially, urgency
+*never* moves a donor across a band — it only reorders donors of equal blood-group fit. Weight
+tables live at the top of the service file.
 
 `reliability` and `responsiveness` are updated every time a donor accepts or declines a request —
 the system genuinely learns from behaviour rather than staying static.

@@ -8,6 +8,29 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const apiTarget = env.VITE_API_PROXY || 'http://localhost:5001';
 
+  /**
+   * Without this, an unreachable API (server not started, or started on another
+   * port) surfaces in the browser as a bare `500` with an empty body — which
+   * axios reports as the useless "Request failed with status code 500".
+   * Turn it into a 503 that names the actual problem.
+   */
+  const explainProxyFailure = (proxy) => {
+    proxy.on('error', (err, _req, res) => {
+      const unreachable = ['ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH'].includes(err.code);
+      const message = unreachable
+        ? `Cannot reach the API at ${apiTarget}. Is the server running? Try \`npm run dev\` from the project root, and check PORT in server/.env matches VITE_API_PROXY.`
+        : `Proxy error talking to ${apiTarget}: ${err.message}`;
+
+      console.error(`\n[vite:proxy] ${message}\n`);
+      if (res.writeHead && !res.headersSent) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message }));
+      } else if (res.end) {
+        res.end();
+      }
+    });
+  };
+
   return {
     plugins: [react()],
     server: {
@@ -18,8 +41,8 @@ export default defineConfig(({ mode }) => {
       proxy: {
         // Keeps the browser on one origin in dev: no CORS preflight, and the
         // websocket upgrade rides through the same proxy.
-        '/api': { target: apiTarget, changeOrigin: true },
-        '/socket.io': { target: apiTarget, ws: true },
+        '/api': { target: apiTarget, changeOrigin: true, configure: explainProxyFailure },
+        '/socket.io': { target: apiTarget, ws: true, configure: explainProxyFailure },
       },
     },
   };

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Award, CalendarClock, Clock, Droplet, HeartHandshake, MapPin, Zap } from 'lucide-react';
+import { Award, CalendarClock, Clock, Droplet, EyeOff, HeartHandshake, MapPin, Zap } from 'lucide-react';
 import { endpoints } from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
@@ -56,6 +56,50 @@ export default function DonorDashboard() {
       actions={<Link to="/donor/requests" className="btn btn-primary"><MapPin size={16} /> Nearby requests</Link>}
     >
       <ErrorNote>{error}</ErrorNote>
+
+      {/* ----------------------------------------------- visibility --- */}
+      {!data.isVisibleToPatients && (
+        <div
+          className="card"
+          style={{ borderColor: 'var(--critical)', marginBottom: '1rem' }}
+          role="alert"
+        >
+          <div className="row gap-2">
+            <EyeOff size={18} style={{ color: 'var(--critical)' }} aria-hidden="true" />
+            <h2 className="h3">Patients cannot find you right now</h2>
+          </div>
+          <p className="small dim mt-1">
+            You are being filtered out of every patient's match results for the reason
+            {data.blockers.length > 1 ? 's' : ''} below.
+          </p>
+          <ul className="stack gap-2 mt-2" style={{ listStyle: 'none', padding: 0 }}>
+            {data.blockers.map((b) => (
+              <li key={b.key} className="panel">
+                <strong className="small">{b.title}</strong>
+                <p className="tiny muted">{b.fix}</p>
+              </li>
+            ))}
+          </ul>
+          {data.blockers.some((b) => b.selfFixable) && (
+            <Link to="/profile" className="btn btn-primary btn-sm mt-2">
+              Fix this on my profile
+            </Link>
+          )}
+        </div>
+      )}
+
+      {data.isVisibleToPatients && data.noLocation && (
+        <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
+          <MapPin size={17} aria-hidden="true" />
+          <span>
+            You have no precise location saved, so you only appear for patients in your city and
+            rank lower on distance.{' '}
+            <Link to="/profile" style={{ color: 'var(--brand)', fontWeight: 600 }}>
+              Add your location
+            </Link>
+          </span>
+        </div>
+      )}
 
       {/* ------------------------------------------------- availability --- */}
       <div className="card" style={{ borderColor: data.isAvailable ? 'var(--good)' : 'var(--border)' }}>

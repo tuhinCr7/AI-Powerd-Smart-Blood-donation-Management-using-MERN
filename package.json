@@ -1,3 +1,4 @@
+
 {
   "name": "lifelink-blood-donation",
   "version": "1.0.0",
@@ -7,10 +8,11 @@
     "install:all": "npm install --prefix server && npm install --prefix client",
     "dev": "concurrently -n server,client -c cyan,magenta \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
     "seed": "npm run seed --prefix server",
-    "build": "npm run build --prefix client",
+    "build": "npm install --prefix client && npm run build --prefix client",
     "start": "npm start --prefix server"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
   }
 }
+

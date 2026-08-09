@@ -224,9 +224,10 @@ export const fulfilRequest = asyncHandler(async (req, res) => {
     verifiedBy: req.user.role === ROLES.ADMIN ? req.user._id : undefined,
   });
 
-  donor.donorProfile.totalDonations = (donor.donorProfile.totalDonations || 0) + 1;
-  donor.donorProfile.lastDonationDate = donation.donatedAt;
-  donor.donorProfile.isAvailable = false; // back on the roster after the cooldown
+  const profile = donor.ensureDonorProfile();
+  profile.totalDonations = (profile.totalDonations || 0) + 1;
+  profile.lastDonationDate = donation.donatedAt;
+  profile.isAvailable = false; // back on the roster once the cooldown elapses
   await donor.save({ validateBeforeSave: false });
 
   request.unitsFulfilled += units;

@@ -24,9 +24,18 @@ api.interceptors.response.use(
   (res) => res,
   (error) => {
     const status = error.response?.status;
+
+    // A dead API behind the dev proxy arrives as a 5xx with no usable body.
+    // Say what is actually wrong rather than "status code 500".
+    const serverDown =
+      error.code === 'ERR_NETWORK' ||
+      (status >= 500 && !error.response?.data?.message);
+
     const message =
       error.response?.data?.message ||
-      (error.code === 'ERR_NETWORK' ? 'Cannot reach the server' : error.message);
+      (serverDown
+        ? 'Cannot reach the API server. Make sure it is running (npm run dev from the project root).'
+        : error.message);
 
     // An expired or revoked token — drop it and let the router bounce to /login.
     if (status === 401 && tokenStore.get()) {

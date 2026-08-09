@@ -289,13 +289,27 @@ export default function Register() {
                       <input id="last" className="input" type="date" value={form.lastDonationDate} onChange={set('lastDonationDate')} />
                     </div>
                   </div>
-                  <label className="checkbox-row">
-                    <input type="checkbox" checked={form.hasChronicIllness} onChange={set('hasChronicIllness')} />
-                    <span className="small dim">
-                      I have a chronic illness or condition that may affect donation. Ticking this
-                      keeps you out of match results until a clinician clears you.
-                    </span>
-                  </label>
+                  {/* This flag hard-filters a donor out of every search, so it
+                      has to read as a consequence, not as a consent tickbox. */}
+                  <div
+                    className="panel"
+                    style={form.hasChronicIllness ? { borderLeft: '3px solid var(--critical)' } : undefined}
+                  >
+                    <label className="checkbox-row">
+                      <input type="checkbox" checked={form.hasChronicIllness} onChange={set('hasChronicIllness')} />
+                      <span className="small">
+                        <strong>Only tick this if it applies to you:</strong> I have a chronic
+                        illness or condition that may affect donation.
+                      </span>
+                    </label>
+                    {form.hasChronicIllness && (
+                      <p className="small mt-1" style={{ color: 'var(--critical)' }}>
+                        Heads up — you will be <strong>hidden from every patient's search</strong>{' '}
+                        until a clinician clears you. Leave this unticked if you are unsure; you can
+                        change it any time from your profile.
+                      </p>
+                    )}
+                  </div>
                   <p className="tiny muted">
                     Donors must be 18–65 and at least 45 kg, with 90 days since their last donation.
                   </p>

@@ -59,12 +59,18 @@ export const explainModel = asyncHandler(async (_req, res) => {
     success: true,
     model: {
       name: 'LifeLink Donor Match',
-      version: '1.0',
+      version: '1.1',
       approach:
-        'Feature-based scoring with urgency-conditional weights and a logistic link for response probability.',
+        'Blood group first: the group match picks a non-overlapping score band, and the remaining features only order donors inside that band. An exact match therefore always outranks a merely compatible donor, however close by. Urgency reweights the within-band features; a logistic link turns them into a response probability.',
+      bands: [
+        { label: 'Exact match', band: '85–100', detail: 'Type-specific — same ABO and Rh, e.g. A+ to A+.' },
+        { label: 'Same ABO group', band: '70–85', detail: 'Right ABO, opposite Rh, e.g. A− to A+.' },
+        { label: 'Compatible group', band: '55–70', detail: 'Different ABO but transfusable, e.g. O+ to A+.' },
+        { label: 'Universal donor', band: '40–55', detail: 'O− to a non-O− recipient — ranked last so the scarcest stock is conserved for recipients who have no alternative.' },
+      ],
       features: [
-        { key: 'compatibility', label: 'Blood group fit', detail: 'Exact match preferred; universal donors are conserved for recipients with no alternative.' },
-        { key: 'proximity', label: 'Distance', detail: 'Exponential decay with a 12 km half-life, computed on a 2dsphere geo index.' },
+        { key: 'compatibility', label: 'Blood group fit', detail: 'Not a competing feature — it selects the score band outright.' },
+        { key: 'proximity', label: 'Distance', detail: 'Exponential decay with a 12 km half-life, computed on a 2dsphere geo index. Orders donors within a band, never across bands.' },
         { key: 'readiness', label: 'Medical readiness', detail: `Time since last donation against a ${env.reco.cooldownDays}-day cooldown.` },
         { key: 'reliability', label: 'Acceptance history', detail: 'Beta-smoothed acceptance rate so small samples do not dominate.' },
         { key: 'responsiveness', label: 'Reply speed', detail: 'Exponential decay on average reply time (45 min half-life).' },

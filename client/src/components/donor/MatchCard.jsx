@@ -7,7 +7,7 @@ import {
 import { endpoints } from '../../api/client.js';
 import { useSocket } from '../../context/SocketContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
-import { initials, timeAgo } from '../../utils/format.js';
+import { timeAgo } from '../../utils/format.js';
 
 const REASON_ICONS = { drop: Droplet, pin: MapPin, clock: Clock, check: CheckCircle2, bolt: Bolt, star: Star };
 
@@ -21,16 +21,19 @@ const FEATURE_LABELS = {
   activity: 'Recent activity',
 };
 
-/** Score colour follows the fixed status palette, and never stands alone. */
-const scoreTone = (score) =>
-  score >= 75 ? 'var(--good)' : score >= 55 ? 'var(--warning)' : 'var(--muted)';
+/** Score colour follows the compatibility band, and never stands alone. */
+const TIER_TONE = ['var(--good)', 'var(--series-1)', 'var(--warning)', 'var(--muted)'];
+const scoreTone = (tier) => TIER_TONE[tier] ?? 'var(--muted)';
 
 /**
  * One AI-ranked donor. Shows the score, the reasons behind it, and an
  * expandable breakdown of every feature the model used.
  */
 export default function MatchCard({ match, requestId }) {
-  const { donor, matchScore, responseProbability, distanceKm, reasons, features } = match;
+  const {
+    donor, matchScore, responseProbability, distanceKm, reasons, features, compatibility,
+  } = match;
+  const tone = scoreTone(compatibility?.tier ?? 0);
   const navigate = useNavigate();
   const toast = useToast();
   const { isUserOnline } = useSocket();
@@ -72,14 +75,24 @@ export default function MatchCard({ match, requestId }) {
         </div>
 
         <div className="match-score">
-          <b style={{ color: scoreTone(matchScore) }} className="tabular">{Math.round(matchScore)}</b>
+          <b style={{ color: tone }} className="tabular">{Math.round(matchScore)}</b>
           <span className="tiny muted">match score</span>
         </div>
       </header>
 
+      {/* The band this donor's blood group put them in — the primary ranking key. */}
+      {compatibility && (
+        <span
+          className="badge"
+          style={{ alignSelf: 'flex-start', color: tone, borderColor: 'currentColor' }}
+        >
+          <Droplet size={12} aria-hidden="true" /> {compatibility.label}
+        </span>
+      )}
+
       <div>
         <div className="score-bar">
-          <span style={{ width: `${matchScore}%`, background: scoreTone(matchScore) }} />
+          <span style={{ width: `${matchScore}%`, background: tone }} />
         </div>
         <p className="tiny muted mt-1 tabular">
           {responseProbability}% estimated chance of responding
@@ -117,7 +130,15 @@ export default function MatchCard({ match, requestId }) {
       {showBreakdown && (
         <div className="panel">
           <p className="tiny muted" style={{ marginBottom: '.6rem' }}>
-            Each factor scored 0–1, then combined with the weights for this request's urgency.
+            {compatibility ? (
+              <>
+                Blood group set the <strong>{compatibility.label}</strong> band (
+                {compatibility.band[0]}–{compatibility.band[1]}). The factors below only order
+                donors <em>inside</em> that band — they never move a donor across it.
+              </>
+            ) : (
+              "Each factor scored 0–1, then combined with the weights for this request's urgency."
+            )}
           </p>
           <div className="feature-bars">
             {Object.entries(features).map(([key, value]) => (

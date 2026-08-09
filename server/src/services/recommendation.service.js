@@ -8,21 +8,47 @@ import { haversineKm, isValidCoords } from '../utils/geo.js';
  * ---------------------------------------------------------------------------
  * Donor recommendation engine
  * ---------------------------------------------------------------------------
- * A transparent, explainable ranking model. Every candidate donor is reduced to
- * a small set of normalised features (0..1), combined with urgency-aware
- * weights into a single match score, and passed through a logistic link to get
- * a calibrated "likely to respond" probability.
+ * A transparent, explainable ranking model built on a simple principle:
  *
- * Nothing here is a black box: `reasons` and `features` travel with each result
- * so the UI can tell a patient *why* a donor was suggested.
+ *   **blood group decides the band, everything else decides the position
+ *   inside that band.**
+ *
+ * Blood-group fit is not one feature competing with distance — it is the
+ * primary key. Each donor lands in a score band determined purely by how well
+ * their group matches the recipient's, and the remaining features (distance,
+ * readiness, reliability, reply speed, history, activity) only move them up or
+ * down *within* that band. An exact match therefore always outranks a merely
+ * compatible one, however close by the latter happens to be. This mirrors
+ * transfusion practice: give type-specific blood first, and conserve the
+ * versatile groups for the recipients who have no alternative.
+ *
+ * Because the bands do not overlap, the number shown on a card can never
+ * contradict the order the cards are listed in.
+ *
+ * Nothing here is a black box: `reasons`, `features` and `compatibility` travel
+ * with each result so the UI can tell a patient *why* a donor was suggested.
  */
 
-/** Feature weights per urgency level. Each column sums to 1. */
-const WEIGHTS = {
-  [URGENCY.LOW]:      { compatibility: 0.22, proximity: 0.18, readiness: 0.20, reliability: 0.18, responsiveness: 0.10, experience: 0.07, activity: 0.05 },
-  [URGENCY.NORMAL]:   { compatibility: 0.24, proximity: 0.22, readiness: 0.18, reliability: 0.16, responsiveness: 0.10, experience: 0.06, activity: 0.04 },
-  [URGENCY.HIGH]:     { compatibility: 0.24, proximity: 0.28, readiness: 0.14, reliability: 0.14, responsiveness: 0.13, experience: 0.04, activity: 0.03 },
-  [URGENCY.CRITICAL]: { compatibility: 0.22, proximity: 0.34, readiness: 0.10, reliability: 0.12, responsiveness: 0.17, experience: 0.03, activity: 0.02 },
+/**
+ * Compatibility bands, best first. `tier` is the primary sort key; `band` is
+ * the score range a donor in that tier can occupy.
+ */
+const COMPATIBILITY_TIERS = [
+  { tier: 0, key: 'exact',     label: 'Exact match',      band: [85, 100], score: 1.0 },
+  { tier: 1, key: 'sameAbo',   label: 'Same ABO group',   band: [70, 85],  score: 0.8 },
+  { tier: 2, key: 'compatible',label: 'Compatible group', band: [55, 70],  score: 0.62 },
+  { tier: 3, key: 'universal', label: 'Universal donor',  band: [40, 55],  score: 0.45 },
+];
+
+/**
+ * Weights for the *within-band* quality score. Each column sums to 1.
+ * Blood group is deliberately absent — it already picked the band.
+ */
+const QUALITY_WEIGHTS = {
+  [URGENCY.LOW]:      { proximity: 0.22, readiness: 0.26, reliability: 0.24, responsiveness: 0.13, experience: 0.09, activity: 0.06 },
+  [URGENCY.NORMAL]:   { proximity: 0.30, readiness: 0.24, reliability: 0.21, responsiveness: 0.13, experience: 0.08, activity: 0.04 },
+  [URGENCY.HIGH]:     { proximity: 0.38, readiness: 0.18, reliability: 0.18, responsiveness: 0.17, experience: 0.05, activity: 0.04 },
+  [URGENCY.CRITICAL]: { proximity: 0.46, readiness: 0.13, reliability: 0.15, responsiveness: 0.21, experience: 0.03, activity: 0.02 },
 };
 
 /** Distance at which the proximity score decays to ~37%. */
@@ -37,15 +63,25 @@ const sigmoid = (z) => 1 / (1 + Math.exp(-z));
 
 // --- individual feature extractors ------------------------------------------
 
+/** 'A+' -> 'A'. Strips the Rh sign to compare ABO groups alone. */
+const aboOf = (group) => group.replace(/[+-]$/, '');
+
 /**
- * Exact blood-group matches score highest; compatible-but-different matches are
- * discounted so that scarce universal donors (O-) are held back for the
- * recipients who have no alternative.
+ * Places a compatible donor into a band, most specific match first:
+ *
+ *   0  exact      A+ → A+   type-specific, always preferred
+ *   1  same ABO   A- → A+   right ABO, opposite Rh
+ *   2  compatible O+ → A+   different ABO but transfusable
+ *   3  universal  O- → A+   the scarcest stock, conserved for those with no
+ *                           alternative (O- recipients, who see it as tier 0)
+ *
+ * Callers must have already established that the pair is transfusable.
  */
-function compatibilityScore(donorGroup, recipientGroup) {
-  if (donorGroup === recipientGroup) return 1;
-  if (donorGroup === 'O-' && recipientGroup !== 'O-') return 0.72;
-  return 0.85;
+function compatibilityTier(donorGroup, recipientGroup) {
+  if (donorGroup === recipientGroup) return COMPATIBILITY_TIERS[0];
+  if (donorGroup === 'O-') return COMPATIBILITY_TIERS[3];
+  if (aboOf(donorGroup) === aboOf(recipientGroup)) return COMPATIBILITY_TIERS[1];
+  return COMPATIBILITY_TIERS[2];
 }
 
 function proximityScore(distanceKm) {
@@ -89,14 +125,16 @@ function activityScore(lastSeenAt) {
 
 // --- explanation -------------------------------------------------------------
 
-function buildReasons({ donor, distanceKm, features, recipientGroup }) {
+function buildReasons({ donor, distanceKm, features, recipientGroup, compatibility }) {
   const reasons = [];
 
-  if (donor.bloodGroup === recipientGroup) {
-    reasons.push({ icon: 'drop', text: `Exact ${donor.bloodGroup} match` });
-  } else {
-    reasons.push({ icon: 'drop', text: `${donor.bloodGroup} is compatible with ${recipientGroup}` });
-  }
+  const groupText = {
+    exact: `Exact ${donor.bloodGroup} match — type-specific`,
+    sameAbo: `${donor.bloodGroup} — same ABO group as ${recipientGroup}`,
+    compatible: `${donor.bloodGroup} is compatible with ${recipientGroup}`,
+    universal: `${donor.bloodGroup} universal donor — compatible with ${recipientGroup}`,
+  }[compatibility.key];
+  reasons.push({ icon: 'drop', text: groupText });
 
   if (distanceKm != null) {
     const pretty = distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m` : `${distanceKm.toFixed(1)} km`;
@@ -136,13 +174,13 @@ function buildReasons({ donor, distanceKm, features, recipientGroup }) {
  * patient is (so Mongo does the distance work and the 2dsphere index is used),
  * otherwise falls back to a city/district match.
  */
-async function fetchCandidates({ recipientGroup, coordinates, city, maxDistanceKm, excludeIds, limit }) {
+function buildBaseMatch({ recipientGroup, excludeIds = [] }) {
   const compatibleGroups = COMPATIBLE_DONORS[recipientGroup] || [];
   const cooldownCutoff = new Date(Date.now() - env.reco.cooldownDays * 86400000);
   const minBirth = new Date(Date.now() - 65 * 365.25 * 86400000); // max age 65
   const maxBirth = new Date(Date.now() - 18 * 365.25 * 86400000); // min age 18
 
-  const baseMatch = {
+  return {
     role: ROLES.DONOR,
     isActive: true,
     bloodGroup: { $in: compatibleGroups },
@@ -173,26 +211,155 @@ async function fetchCandidates({ recipientGroup, coordinates, city, maxDistanceK
     ],
     _id: { $nin: excludeIds.map((id) => new mongoose.Types.ObjectId(String(id))) },
   };
+}
+
+/** Matches donor records that have no usable GeoJSON point on file. */
+const NO_COORDINATES = {
+  $or: [
+    { location: { $exists: false } },
+    { 'location.coordinates': { $exists: false } },
+    { 'location.coordinates': null },
+    { 'location.coordinates': { $size: 0 } },
+  ],
+};
+
+/**
+ * Pulls the eligible donor pool. Uses a $geoNear stage when we know where the
+ * patient is (so Mongo does the distance work on the 2dsphere index).
+ *
+ * $geoNear silently drops any document without a location, so a donor who
+ * skipped the "use my location" step would be invisible to every patient who
+ * did set one — however close they actually are. We therefore run a second
+ * pass for city-matched donors with no coordinates and merge the two.
+ */
+async function fetchCandidates({ recipientGroup, coordinates, city, maxDistanceKm, excludeIds, limit }) {
+  const baseMatch = buildBaseMatch({ recipientGroup, excludeIds });
+  const cityRegex = city ? new RegExp(`^${city.trim()}$`, 'i') : null;
 
   if (isValidCoords(coordinates)) {
-    return User.aggregate([
-      {
-        $geoNear: {
-          near: { type: 'Point', coordinates },
-          distanceField: 'distanceMeters',
-          maxDistance: maxDistanceKm * 1000,
-          spherical: true,
-          query: baseMatch,
+    const [located, unlocated] = await Promise.all([
+      User.aggregate([
+        {
+          $geoNear: {
+            near: { type: 'Point', coordinates },
+            distanceField: 'distanceMeters',
+            maxDistance: maxDistanceKm * 1000,
+            spherical: true,
+            query: baseMatch,
+          },
         },
-      },
-      { $limit: limit * 5 },
-      { $project: { password: 0, __v: 0 } },
+        { $limit: limit * 5 },
+        { $project: { password: 0, __v: 0 } },
+      ]),
+      cityRegex
+        ? User.find({ ...baseMatch, ...NO_COORDINATES, 'address.city': cityRegex })
+            .limit(limit * 2)
+            .select('-password -__v')
+            .lean()
+        : [],
     ]);
+
+    const seen = new Set(located.map((d) => String(d._id)));
+    return [...located, ...unlocated.filter((d) => !seen.has(String(d._id)))];
   }
 
   const geoFreeMatch = { ...baseMatch };
-  if (city) geoFreeMatch['address.city'] = new RegExp(`^${city.trim()}$`, 'i');
+  if (cityRegex) geoFreeMatch['address.city'] = cityRegex;
   return User.find(geoFreeMatch).limit(limit * 5).select('-password -__v').lean();
+}
+
+/**
+ * Counts how many otherwise-compatible donors each hard filter removed.
+ *
+ * Without this, "no donors found" is a dead end — a patient cannot tell an
+ * empty register from a register full of people who all happen to be inside
+ * their donation cooldown. Counts overlap (one donor can fail two filters), so
+ * this is a list of reasons, not a partition.
+ */
+async function diagnoseExclusions({ recipientGroup, city }) {
+  const compatibleGroups = COMPATIBLE_DONORS[recipientGroup] || [];
+  const cooldownCutoff = new Date(Date.now() - env.reco.cooldownDays * 86400000);
+  const minBirth = new Date(Date.now() - 65 * 365.25 * 86400000);
+  const maxBirth = new Date(Date.now() - 18 * 365.25 * 86400000);
+
+  const [row] = await User.aggregate([
+    { $match: { role: ROLES.DONOR, bloodGroup: { $in: compatibleGroups } } },
+    {
+      $group: {
+        _id: null,
+        compatibleDonors: { $sum: 1 },
+        deactivated: { $sum: { $cond: [{ $eq: ['$isActive', false] }, 1, 0] } },
+        markedUnavailable: {
+          $sum: { $cond: [{ $ne: ['$donorProfile.isAvailable', true] }, 1, 0] },
+        },
+        declaredChronicIllness: {
+          $sum: { $cond: [{ $eq: ['$donorProfile.hasChronicIllness', true] }, 1, 0] },
+        },
+        withinCooldown: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $ne: [{ $ifNull: ['$donorProfile.lastDonationDate', null] }, null] },
+                  { $gt: ['$donorProfile.lastDonationDate', cooldownCutoff] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        outsideAgeRange: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $ne: [{ $ifNull: ['$donorProfile.dateOfBirth', null] }, null] },
+                  {
+                    $or: [
+                      { $lt: ['$donorProfile.dateOfBirth', minBirth] },
+                      { $gt: ['$donorProfile.dateOfBirth', maxBirth] },
+                    ],
+                  },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        underWeight: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $ne: [{ $ifNull: ['$donorProfile.weightKg', null] }, null] },
+                  { $lt: ['$donorProfile.weightKg', 45] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        noLocationSaved: {
+          $sum: { $cond: [{ $eq: [{ $ifNull: ['$location.coordinates', null] }, null] }, 1, 0] },
+        },
+        inYourCity: {
+          $sum: {
+            $cond: [
+              { $eq: [{ $toLower: { $ifNull: ['$address.city', ''] } }, (city || '').toLowerCase()] },
+              1,
+              0,
+            ],
+          },
+        },
+      },
+    },
+    { $project: { _id: 0 } },
+  ]);
+
+  return row || { compatibleDonors: 0 };
 }
 
 // --- public API --------------------------------------------------------------
@@ -223,7 +390,7 @@ export async function recommendDonors({
     throw new Error(`Unknown blood group: ${recipientGroup}`);
   }
 
-  const weights = WEIGHTS[urgency] || WEIGHTS[URGENCY.NORMAL];
+  const weights = QUALITY_WEIGHTS[urgency] || QUALITY_WEIGHTS[URGENCY.NORMAL];
   const candidates = await fetchCandidates({
     recipientGroup,
     coordinates,
@@ -239,8 +406,12 @@ export async function recommendDonors({
         ? donor.distanceMeters / 1000
         : haversineKm(coordinates, donor.location?.coordinates);
 
+    // Step 1 — blood group picks the band. This is the primary key.
+    const compatibility = compatibilityTier(donor.bloodGroup, recipientGroup);
+
+    // Step 2 — everything else decides the position inside that band.
     const features = {
-      compatibility: compatibilityScore(donor.bloodGroup, recipientGroup),
+      compatibility: compatibility.score,
       proximity: proximityScore(distanceKm),
       readiness: readinessScore(donor.donorProfile?.lastDonationDate, env.reco.cooldownDays),
       reliability: reliabilityScore(donor.donorProfile),
@@ -249,16 +420,26 @@ export async function recommendDonors({
       activity: activityScore(donor.lastSeenAt),
     };
 
-    const weighted = Object.entries(weights).reduce(
+    const quality = Object.entries(weights).reduce(
       (sum, [key, w]) => sum + w * features[key],
       0
     );
 
-    // Logistic link centred at 0.55 — turns the weighted sum into a probability
-    // that reads like "chance this donor actually responds".
-    const responseProbability = sigmoid((weighted - 0.55) * 7);
+    const [floor, ceiling] = compatibility.band;
+    const matchScore = floor + quality * (ceiling - floor);
+
+    // Response probability is about the *donor*, not their blood type, so it
+    // reads off the quality score alone. Logistic link centred at 0.55.
+    const responseProbability = sigmoid((quality - 0.55) * 7);
 
     return {
+      compatibility: {
+        tier: compatibility.tier,
+        key: compatibility.key,
+        label: compatibility.label,
+        band: compatibility.band,
+      },
+      qualityScore: Math.round(quality * 100) / 100,
       donor: {
         _id: donor._id,
         name: donor.name,
@@ -275,25 +456,46 @@ export async function recommendDonors({
           isAvailable: donor.donorProfile?.isAvailable !== false,
         },
       },
-      matchScore: Math.round(weighted * 1000) / 10, // 0–100, one decimal
+      matchScore: Math.round(matchScore * 10) / 10, // 0–100, one decimal
       responseProbability: Math.round(responseProbability * 100),
       distanceKm: distanceKm == null ? null : Math.round(distanceKm * 10) / 10,
       features: Object.fromEntries(
         Object.entries(features).map(([k, v]) => [k, Math.round(v * 100) / 100])
       ),
-      reasons: buildReasons({ donor, distanceKm, features, recipientGroup }),
+      reasons: buildReasons({ donor, distanceKm, features, recipientGroup, compatibility }),
     };
   });
 
-  scored.sort((a, b) => b.matchScore - a.matchScore);
+  // Tier first, then quality. The bands already guarantee this ordering, so the
+  // explicit tier key is belt-and-braces against a future band change.
+  scored.sort(
+    (a, b) => a.compatibility.tier - b.compatibility.tier || b.matchScore - a.matchScore
+  );
+
+  const results = scored.slice(0, limit);
+
+  // Only worth the extra round trip when the patient is looking at a thin list
+  // and deserves to know why.
+  const excluded = results.length < limit
+    ? await diagnoseExclusions({ recipientGroup, city })
+    : null;
 
   return {
-    results: scored.slice(0, limit),
+    results,
     meta: {
       recipientGroup,
       compatibleGroups: COMPATIBLE_DONORS[recipientGroup],
+      excluded,
       urgency,
       weights,
+      ranking: 'blood-group-first',
+      tiers: COMPATIBILITY_TIERS.map(({ tier, key, label, band }) => ({ tier, key, label, band })),
+      // How many of the returned donors sit in each band — lets the UI say
+      // "6 exact matches" without recounting.
+      tierCounts: results.reduce((acc, r) => {
+        acc[r.compatibility.key] = (acc[r.compatibility.key] || 0) + 1;
+        return acc;
+      }, {}),
       searchRadiusKm: maxDistanceKm,
       candidatesEvaluated: candidates.length,
       usedGeoIndex: isValidCoords(coordinates),
@@ -304,12 +506,13 @@ export async function recommendDonors({
 }
 
 export const __testing = {
-  compatibilityScore,
+  compatibilityTier,
   proximityScore,
   readinessScore,
   reliabilityScore,
   responsivenessScore,
   experienceScore,
   activityScore,
-  WEIGHTS,
+  COMPATIBILITY_TIERS,
+  QUALITY_WEIGHTS,
 };

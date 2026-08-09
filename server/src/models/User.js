@@ -93,6 +93,17 @@ userSchema.methods.comparePassword = function comparePassword(plain) {
   return bcrypt.compare(plain, this.password);
 };
 
+/**
+ * Guarantees the donor sub-document exists before anything writes to it.
+ * A user can reach a donor code path without one — an admin promoting a
+ * patient to donor, or a legacy record — and blind `donorProfile.x = y`
+ * assignment would throw a TypeError (and a 500) in that case.
+ */
+userSchema.methods.ensureDonorProfile = function ensureDonorProfile() {
+  if (!this.donorProfile) this.donorProfile = {};
+  return this.donorProfile;
+};
+
 /** Strips sensitive fields before a document leaves the API. */
 userSchema.methods.toPublic = function toPublic() {
   const obj = this.toObject({ virtuals: true });

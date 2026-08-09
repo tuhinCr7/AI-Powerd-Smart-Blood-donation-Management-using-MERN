@@ -69,7 +69,14 @@ export const updateUser = asyncHandler(async (req, res) => {
 
   if (isVerified !== undefined) user.isVerified = Boolean(isVerified);
   if (isActive !== undefined) user.isActive = Boolean(isActive);
-  if (role && Object.values(ROLES).includes(role)) user.role = role;
+
+  if (role && Object.values(ROLES).includes(role)) {
+    user.role = role;
+    // A role change has to bring its sub-document with it, or every donor
+    // code path downstream is writing to something that isn't there.
+    if (role === ROLES.DONOR) user.ensureDonorProfile();
+    if (role === ROLES.PATIENT && !user.patientProfile) user.patientProfile = {};
+  }
 
   await user.save({ validateBeforeSave: false });
   res.json({ success: true, user: user.toPublic() });
@@ -131,9 +138,10 @@ export const recordDonation = asyncHandler(async (req, res) => {
     verifiedBy: req.user._id,
   });
 
-  donor.donorProfile.totalDonations = (donor.donorProfile.totalDonations || 0) + 1;
-  donor.donorProfile.lastDonationDate = donation.donatedAt;
-  donor.donorProfile.isAvailable = false;
+  const profile = donor.ensureDonorProfile();
+  profile.totalDonations = (profile.totalDonations || 0) + 1;
+  profile.lastDonationDate = donation.donatedAt;
+  profile.isAvailable = false;
   await donor.save({ validateBeforeSave: false });
 
   res.status(201).json({ success: true, donation });

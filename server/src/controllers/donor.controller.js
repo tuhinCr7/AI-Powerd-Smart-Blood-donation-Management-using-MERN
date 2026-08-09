@@ -60,10 +60,68 @@ export const donorDashboard = asyncHandler(async (req, res) => {
   ]);
 
   const cooldownDays = 90;
-  const daysSince = donor.donorProfile?.lastDonationDate
-    ? Math.floor((Date.now() - new Date(donor.donorProfile.lastDonationDate)) / 86400000)
+  const profile = donor.donorProfile || {};
+  const daysSince = profile.lastDonationDate
+    ? Math.floor((Date.now() - new Date(profile.lastDonationDate)) / 86400000)
     : null;
   const nextEligibleInDays = daysSince == null ? 0 : Math.max(0, cooldownDays - daysSince);
+
+  /**
+   * Every hard filter the recommender applies, mirrored back at the donor.
+   * A donor who is invisible to patients must be able to see why, and what to
+   * do about it — otherwise they sit on the register believing they are
+   * findable when they are not.
+   */
+  const age = profile.dateOfBirth
+    ? Math.floor((Date.now() - new Date(profile.dateOfBirth)) / 31557600000)
+    : null;
+
+  const blockers = [
+    {
+      key: 'unavailable',
+      blocked: profile.isAvailable !== true,
+      title: 'You are marked unavailable',
+      fix: 'Use the toggle above to make yourself visible again.',
+      selfFixable: true,
+    },
+    {
+      key: 'chronicIllness',
+      blocked: profile.hasChronicIllness === true,
+      title: 'You declared a chronic illness',
+      fix: 'If that was ticked by mistake, untick it on your profile — it hides you from all match results.',
+      selfFixable: true,
+    },
+    {
+      key: 'cooldown',
+      blocked: nextEligibleInDays > 0,
+      title: `You are inside the ${cooldownDays}-day donation cooldown`,
+      fix: `You will reappear in match results in ${nextEligibleInDays} days.`,
+      selfFixable: false,
+    },
+    {
+      key: 'age',
+      blocked: age != null && (age < 18 || age > 65),
+      title: `Recorded age (${age}) is outside the 18–65 range`,
+      fix: 'Check your date of birth on your profile.',
+      selfFixable: true,
+    },
+    {
+      key: 'weight',
+      blocked: profile.weightKg != null && profile.weightKg < 45,
+      title: `Recorded weight (${profile.weightKg} kg) is below the 45 kg minimum`,
+      fix: 'Check your weight on your profile.',
+      selfFixable: true,
+    },
+    {
+      key: 'inactive',
+      blocked: donor.isActive === false,
+      title: 'Your account has been deactivated',
+      fix: 'Contact an administrator.',
+      selfFixable: false,
+    },
+  ].filter((b) => b.blocked);
+
+  const noLocation = !donor.location?.coordinates?.length;
 
   res.json({
     success: true,
@@ -75,6 +133,11 @@ export const donorDashboard = asyncHandler(async (req, res) => {
       daysSinceLastDonation: daysSince,
       nextEligibleInDays,
       isEligibleNow: nextEligibleInDays === 0,
+      // Visibility in patients' match results — the single most important
+      // thing a donor needs to know about their own account.
+      isVisibleToPatients: blockers.length === 0,
+      blockers,
+      noLocation,
       acceptanceRate:
         donor.donorProfile?.requestsReceived
           ? Math.round(
