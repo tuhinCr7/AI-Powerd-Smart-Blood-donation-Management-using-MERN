@@ -3,6 +3,7 @@ import { Donation } from '../models/Donation.js';
 import { User } from '../models/User.js';
 import { ApiError, asyncHandler } from '../utils/ApiError.js';
 import { COMPATIBLE_RECIPIENTS, REQUEST_STATUS, ROLES } from '../utils/constants.js';
+import { exactInsensitive } from '../utils/text.js';
 import { emitToUsers } from '../sockets/index.js';
 
 /** POST /api/requests — a patient raises a new blood request. */
@@ -91,14 +92,38 @@ export const donorFeed = asyncHandler(async (req, res) => {
         },
       },
     ]);
-    return res.json({
-      success: true,
-      count: requests.length,
-      radiusKm,
-      requests: requests.map((r) => ({
+
+    // $geoNear drops requests with no coordinates and anything past the radius,
+    // which would hide a request raised down the road by a patient who skipped
+    // the location prompt. Mirror the recommender: same city is always visible.
+    const sameCity = donor.address?.city?.trim()
+      ? await BloodRequest.find({
+          ...filter,
+          _id: { $nin: requests.map((r) => r._id) },
+          'address.city': exactInsensitive(donor.address.city),
+        })
+          .limit(50)
+          .populate('patient', 'name address avatarUrl')
+          .lean()
+      : [];
+
+    const merged = [
+      ...requests.map((r) => ({
         ...r,
         distanceKm: Math.round((r.distanceMeters / 1000) * 10) / 10,
       })),
+      ...sameCity.map(({ matches, ...r }) => ({
+        ...r,
+        distanceKm: null,
+        myResponse: (matches || []).find((m) => String(m.donor) === String(donor._id)) || null,
+      })),
+    ];
+
+    return res.json({
+      success: true,
+      count: merged.length,
+      radiusKm,
+      requests: merged,
     });
   }
 

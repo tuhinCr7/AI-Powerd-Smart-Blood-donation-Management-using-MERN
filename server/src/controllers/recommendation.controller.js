@@ -15,7 +15,6 @@ export const getRecommendations = asyncHandler(async (req, res) => {
   let bloodGroup = q.bloodGroup || patient.bloodGroup;
   let coordinates = q.lng != null && q.lat != null ? [q.lng, q.lat] : patient.location?.coordinates;
   let city = q.city || patient.address?.city;
-  let urgency = q.urgency || 'normal';
   let request = null;
 
   if (q.requestId) {
@@ -27,14 +26,12 @@ export const getRecommendations = asyncHandler(async (req, res) => {
     bloodGroup = q.bloodGroup || request.bloodGroup;
     coordinates = q.lng != null ? coordinates : request.location?.coordinates || coordinates;
     city = q.city || request.address?.city || city;
-    urgency = q.urgency || request.urgency;
   }
 
   const { results, meta } = await recommendDonors({
     recipientGroup: bloodGroup,
     coordinates,
     city,
-    urgency,
     maxDistanceKm: q.radiusKm || env.reco.maxDistanceKm,
     limit: q.limit || 12,
     excludeIds: [patient._id],
@@ -59,9 +56,9 @@ export const explainModel = asyncHandler(async (_req, res) => {
     success: true,
     model: {
       name: 'LifeLink Donor Match',
-      version: '1.1',
+      version: '2.0',
       approach:
-        'Blood group first: the group match picks a non-overlapping score band, and the remaining features only order donors inside that band. An exact match therefore always outranks a merely compatible donor, however close by. Urgency reweights the within-band features; a logistic link turns them into a response probability.',
+        'Three factors, and nothing else: blood group, availability and location. The blood group match picks a non-overlapping score band, and distance only orders donors inside that band — so an exact match always outranks a merely compatible donor, however close by. Donors in your city are always shown, even when they fall outside the search radius.',
       bands: [
         { label: 'Exact match', band: '85–100', detail: 'Type-specific — same ABO and Rh, e.g. A+ to A+.' },
         { label: 'Same ABO group', band: '70–85', detail: 'Right ABO, opposite Rh, e.g. A− to A+.' },
@@ -70,20 +67,16 @@ export const explainModel = asyncHandler(async (_req, res) => {
       ],
       features: [
         { key: 'compatibility', label: 'Blood group fit', detail: 'Not a competing feature — it selects the score band outright.' },
-        { key: 'proximity', label: 'Distance', detail: 'Exponential decay with a 12 km half-life, computed on a 2dsphere geo index. Orders donors within a band, never across bands.' },
-        { key: 'readiness', label: 'Medical readiness', detail: `Time since last donation against a ${env.reco.cooldownDays}-day cooldown.` },
-        { key: 'reliability', label: 'Acceptance history', detail: 'Beta-smoothed acceptance rate so small samples do not dominate.' },
-        { key: 'responsiveness', label: 'Reply speed', detail: 'Exponential decay on average reply time (45 min half-life).' },
-        { key: 'experience', label: 'Donation history', detail: 'Log-scaled lifetime donations.' },
-        { key: 'activity', label: 'Recent activity', detail: 'Recency of last app activity, 14-day decay.' },
+        { key: 'proximity', label: 'Location', detail: 'Exponential decay with a 12 km half-life, computed on a 2dsphere geo index. A donor in your city who saved no coordinates scores 0.6. Orders donors within a band, never across bands.' },
       ],
       hardFilters: [
-        'Donor role, active account, marked available',
+        'Donor role and an active account',
+        'Marked available to donate',
         'ABO/Rh compatible with the recipient',
-        `At least ${env.reco.cooldownDays} days since the last donation`,
-        'Age 18–65 and weight ≥ 45 kg where recorded',
-        'No declared chronic illness',
-        'Within the search radius',
+        'In your city, or within the search radius',
+      ],
+      notScored: [
+        'Donation cooldown, age, weight and declared illness are no longer filters here — they are verified at the collection centre, where the answers can be checked.',
       ],
     },
   });

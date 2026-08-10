@@ -6,17 +6,13 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import { AppPage } from '../../components/layout/Layout.jsx';
 import MatchCard from '../../components/donor/MatchCard.jsx';
 import { EmptyState, ErrorNote, SkeletonCard } from '../../components/ui/Feedback.jsx';
-import { BLOOD_GROUPS, URGENCY_OPTIONS } from '../../utils/format.js';
+import { BLOOD_GROUPS } from '../../utils/format.js';
 
 const RADIUS_OPTIONS = [5, 10, 25, 50, 100];
 
 /** Human labels for the exclusion counters the API returns. */
 const EXCLUSION_LABELS = {
   markedUnavailable: 'have paused their availability',
-  declaredChronicIllness: 'declared a chronic illness',
-  withinCooldown: 'are inside the 90-day donation cooldown',
-  outsideAgeRange: 'are outside the 18–65 age range',
-  underWeight: 'are below the 45 kg minimum weight',
   deactivated: 'have a deactivated account',
   noLocationSaved: 'have no location saved',
 };
@@ -55,7 +51,8 @@ function ExclusionBreakdown({ excluded, radiusKm }) {
       )}
       <p className="tiny muted mt-2">
         Counts overlap — one donor can fail more than one check. Donors outside your {radiusKm} km
-        radius are not counted here; widening the radius may surface more.
+        radius are not counted here; widening the radius may surface more. Anyone in your city is
+        shown regardless of radius.
       </p>
     </div>
   );
@@ -72,7 +69,6 @@ export default function Matches() {
 
   const [filters, setFilters] = useState({
     bloodGroup: params.get('bloodGroup') || user.bloodGroup,
-    urgency: params.get('urgency') || 'normal',
     radiusKm: Number(params.get('radiusKm')) || 25,
     limit: 12,
   });
@@ -110,7 +106,7 @@ export default function Matches() {
   return (
     <AppPage
       title="AI-recommended donors"
-      subtitle="Ranked by compatibility, distance, readiness and how reliably each donor responds."
+      subtitle="Ranked on blood group first, then location. Only available donors are listed."
       actions={
         <>
           <button type="button" className="btn btn-ghost" onClick={() => setShowModel((v) => !v)}>
@@ -132,13 +128,6 @@ export default function Matches() {
             </select>
           </div>
 
-          <div className="field" style={{ minWidth: '13rem' }}>
-            <label className="label" htmlFor="urg">Urgency</label>
-            <select id="urg" className="select" value={filters.urgency} onChange={update('urgency')}>
-              {URGENCY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
-
           <div className="field" style={{ minWidth: '9rem' }}>
             <label className="label" htmlFor="rad">Search radius</label>
             <select id="rad" className="select" value={filters.radiusKm} onChange={update('radiusKm')}>
@@ -155,6 +144,9 @@ export default function Matches() {
                 {state.meta.usedGeoIndex ? ' using your saved location' : ' by city (no location saved)'}.
                 {state.meta.tierCounts?.exact > 0 && (
                   <> <strong>{state.meta.tierCounts.exact}</strong> exact {filters.bloodGroup} matches, listed first.</>
+                )}
+                {state.meta.sameCityCount > 0 && state.meta.searchCity && (
+                  <> <strong>{state.meta.sameCityCount}</strong> in {state.meta.searchCity}.</>
                 )}
               </p>
             </div>
@@ -210,12 +202,9 @@ export default function Matches() {
             </div>
           </div>
 
-          {state.meta && (
-            <p className="tiny muted mt-3">
-              Weights in use for <strong>{state.meta.urgency}</strong> urgency:{' '}
-              {Object.entries(state.meta.weights).map(([k, v]) => `${k} ${v}`).join(' · ')}
-            </p>
-          )}
+          {model.notScored?.map((n) => (
+            <p key={n} className="tiny muted mt-3">{n}</p>
+          ))}
         </div>
       )}
 

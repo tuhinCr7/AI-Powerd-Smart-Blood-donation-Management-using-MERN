@@ -13,12 +13,7 @@ const REASON_ICONS = { drop: Droplet, pin: MapPin, clock: Clock, check: CheckCir
 
 const FEATURE_LABELS = {
   compatibility: 'Blood group fit',
-  proximity: 'Distance',
-  readiness: 'Medical readiness',
-  reliability: 'Accepts requests',
-  responsiveness: 'Reply speed',
-  experience: 'Donation history',
-  activity: 'Recent activity',
+  proximity: 'Location',
 };
 
 /** Score colour follows the compatibility band, and never stands alone. */
@@ -31,7 +26,7 @@ const scoreTone = (tier) => TIER_TONE[tier] ?? 'var(--muted)';
  */
 export default function MatchCard({ match, requestId }) {
   const {
-    donor, matchScore, responseProbability, distanceKm, reasons, features, compatibility,
+    donor, matchScore, distanceKm, sameCity, reasons, features, compatibility,
   } = match;
   const tone = scoreTone(compatibility?.tier ?? 0);
   const navigate = useNavigate();
@@ -95,8 +90,13 @@ export default function MatchCard({ match, requestId }) {
           <span style={{ width: `${matchScore}%`, background: tone }} />
         </div>
         <p className="tiny muted mt-1 tabular">
-          {responseProbability}% estimated chance of responding
-          {distanceKm != null && ` · ${distanceKm} km away`}
+          {compatibility?.label}
+          {distanceKm != null
+            ? ` · ${distanceKm} km away`
+            : sameCity && donor.address?.city
+              ? ` · in ${donor.address.city}`
+              : ''}
+          {sameCity && distanceKm != null && ' · same city'}
         </p>
       </div>
 
@@ -133,11 +133,11 @@ export default function MatchCard({ match, requestId }) {
             {compatibility ? (
               <>
                 Blood group set the <strong>{compatibility.label}</strong> band (
-                {compatibility.band[0]}–{compatibility.band[1]}). The factors below only order
-                donors <em>inside</em> that band — they never move a donor across it.
+                {compatibility.band[0]}–{compatibility.band[1]}). Location only orders donors{' '}
+                <em>inside</em> that band — it never moves a donor across it.
               </>
             ) : (
-              "Each factor scored 0–1, then combined with the weights for this request's urgency."
+              'Blood group picks the band; location decides the position inside it.'
             )}
           </p>
           <div className="feature-bars">
