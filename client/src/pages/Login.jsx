@@ -44,7 +44,7 @@ export default function Login() {
           <span className="eyebrow"><Droplet size={13} /> Welcome back</span>
           <h1 className="h1 mt-2">Sign in to LifeLink</h1>
           <p className="lead mt-2">
-            Patients see their AI-ranked matches, donors see nearby requests, administrators get the
+            Patients see their matches, donors see nearby requests, administrators get the
             full panel.
           </p>
 
@@ -64,7 +64,7 @@ export default function Login() {
               ))}
             </div>
           </div>
-        </div>
+        </div>        
 
         <form className="card card-pad-lg" onSubmit={submit} noValidate>
           <div className="stack gap-3">

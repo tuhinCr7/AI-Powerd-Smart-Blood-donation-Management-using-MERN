@@ -10,7 +10,7 @@ import { numberFmt } from '../utils/format.js';
 const FEATURES = [
   {
     icon: Sparkles,
-    title: 'AI-ranked donor matches',
+    title: 'Smart donor matches',
     body: 'Every compatible donor is scored on blood-group fit, distance, medical readiness, past reliability and reply speed — then ranked, with the reasoning shown on each card.',
   },
   {
@@ -91,7 +91,7 @@ export default function Home() {
       <section className="hero">
         <div className="container hero-grid">
           <div>
-            <span className="eyebrow"><Sparkles size={13} /> AI-powered matching</span>
+            <span className="eyebrow"><Sparkles size={13} /> Smart matching</span>
             <h1 className="display mt-2">
               The right donor,<br />
               <span style={{ color: 'var(--brand)' }}>found in seconds.</span>
@@ -116,7 +116,7 @@ export default function Home() {
           </div>
 
           {/* A miniature of the real match card, so the value is obvious at a glance. */}
-          <div className="hero-card" aria-label="Preview of AI-ranked donor matches">
+          <div className="hero-card" aria-label="Preview of Smart donor matches">
             <div className="between" style={{ marginBottom: '.9rem' }}>
               <div>
                 <strong>Top matches</strong>

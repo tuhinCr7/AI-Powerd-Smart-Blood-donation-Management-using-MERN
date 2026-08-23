@@ -41,6 +41,7 @@ const linksFor = (user) => {
   ];
 };
 
+//for change to dark mode or light mode
 function ThemeToggle() {
   const [theme, setTheme] = useState(() => localStorage.getItem('lifelink.theme') || 'system');
 
