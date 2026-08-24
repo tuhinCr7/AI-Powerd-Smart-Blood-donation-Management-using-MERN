@@ -2,22 +2,34 @@ services:
   - type: web
     name: lifelink-api
     runtime: node
+    plan: free
+    region: singapore
+
     rootDir: server
+
     buildCommand: npm ci
     startCommand: npm start
+
     healthCheckPath: /api/donors/stats/public
+
     envVars:
       - key: NODE_ENV
         value: production
+
       - key: MONGO_URI
         sync: false
+
       - key: JWT_SECRET
         generateValue: true
+
       - key: JWT_EXPIRES_IN
         value: 7d
+
       - key: CLIENT_URL
         sync: false
+
       - key: RECO_MAX_DISTANCE_KM
         value: 50
+
       - key: RECO_DONATION_COOLDOWN_DAYS
         value: 90
