@@ -6,9 +6,9 @@ import { ErrorNote } from '../components/ui/Feedback.jsx';
 import { homeFor } from '../components/ProtectedRoute.jsx';
 
 const DEMO = [
-  { label: 'Patient', email: 'patient@lifelink.io' },
-  { label: 'Donor', email: 'donor@lifelink.io' },
-  { label: 'Admin', email: 'admin@lifelink.io' },
+  // { label: 'Patient', email: 'patient@lifelink.io' },
+  // { label: 'Donor', email: 'donor@lifelink.io' },
+  // { label: 'Admin', email: 'admin@lifelink.io' },
 ];
 
 export default function Login() {
@@ -49,8 +49,8 @@ export default function Login() {
           </p>
 
           <div className="panel mt-3">
-            <p className="small" style={{ fontWeight: 600 }}>Demo accounts</p>
-            <p className="tiny muted">Password for all three: <code>Password123</code></p>
+            {/* <p className="small" style={{ fontWeight: 600 }}>Demo accounts</p>
+            <p className="tiny muted">Password for all three: <code>Password123</code></p> */}
             <div className="row gap-2 wrap mt-2">
               {DEMO.map((d) => (
                 <button
