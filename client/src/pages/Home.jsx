@@ -109,10 +109,10 @@ export default function Home() {
               <a href="#how" className="btn btn-ghost btn-lg">See how it works</a>
             </div>
 
-            <p className="small muted mt-3">
+            {/* <p className="small muted mt-3">
               Demo accounts · <code>patient@lifelink.io</code> · <code>donor@lifelink.io</code> ·{' '}
               <code>admin@lifelink.io</code> — password <code>Password123</code>
-            </p>
+            </p> */}
           </div>
 
           {/* A miniature of the real match card, so the value is obvious at a glance. */}
