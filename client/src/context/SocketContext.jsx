@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
-import { tokenStore } from '../api/client.js';
+import { apiOrigin, tokenStore } from '../api/client.js';
 import { useAuth } from './AuthContext.jsx';
 
 const SocketContext = createContext(null);
@@ -23,7 +23,7 @@ export function SocketProvider({ children }) {
       return undefined;
     }
 
-    const socket = io(import.meta.env.VITE_API_URL || '/', {
+    const socket = io(apiOrigin || '/', {
       auth: { token: tokenStore.get() },
       transports: ['websocket', 'polling'],
       reconnectionDelay: 800,

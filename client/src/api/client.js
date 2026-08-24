@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 const TOKEN_KEY = 'lifelink.token';
+export const apiOrigin = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || '';
 
 export const tokenStore = {
   get: () => localStorage.getItem(TOKEN_KEY),
@@ -10,7 +11,7 @@ export const tokenStore = {
 
 export const api = axios.create({
   // Falls back to the Vite dev proxy when VITE_API_URL is unset.
-  baseURL: `${import.meta.env.VITE_API_URL || ''}/api`,
+  baseURL: `${apiOrigin}/api`,
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -34,7 +35,11 @@ api.interceptors.response.use(
     const message =
       error.response?.data?.message ||
       (serverDown
-        ? 'Cannot reach the API server. Make sure it is running (npm run dev from the project root).'
+        ? import.meta.env.PROD
+          ? apiOrigin
+            ? `Cannot reach the deployed API at ${apiOrigin}. Check that the Render service is live and its CLIENT_URL exactly matches this Vercel site.`
+            : 'Cannot reach the API because VITE_API_URL is not set in Vercel. Add your Render service URL, then redeploy the frontend.'
+          : 'Cannot reach the API server. Make sure it is running (npm run dev from the project root).'
         : error.message);
 
     // An expired or revoked token — drop it and let the router bounce to /login.
@@ -98,7 +103,7 @@ export const endpoints = {
     recordDonation: (body) => api.post('/admin/donations', body),
     report: (params) => api.get('/admin/reports', { params }),
     reportCsvUrl: (params) =>
-      `${import.meta.env.VITE_API_URL || ''}/api/admin/reports?${new URLSearchParams({
+      `${apiOrigin}/api/admin/reports?${new URLSearchParams({
         ...params,
         format: 'csv',
       })}`,
