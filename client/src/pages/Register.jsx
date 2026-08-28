@@ -291,7 +291,7 @@ export default function Register() {
                   </div>
                   {/* This flag hard-filters a donor out of every search, so it
                       has to read as a consequence, not as a consent tickbox. */}
-                  {/* <div
+                  <div
                     className="panel"
                     style={form.hasChronicIllness ? { borderLeft: '3px solid var(--critical)' } : undefined}
                   >
@@ -309,7 +309,7 @@ export default function Register() {
                         change it any time from your profile.
                       </p>
                     )}
-                  </div> */}
+                  </div>
                   <p className="tiny muted">
                     Donors must be 18–65 and at least 45 kg, with 90 days since their last donation.
                   </p>
