@@ -30,7 +30,7 @@ export const registerSchema = z
     dateOfBirth: z.coerce.date().optional(),
     weightKg: z.number().min(30).max(250).optional(),
     lastDonationDate: z.coerce.date().optional().nullable(),
-    hasChronicIllness: z.boolean().optional(),
+    // hasChronicIllness: z.boolean().optional(),
     // patient extras
     hospitalName: z.string().max(120).optional(),
     condition: z.string().max(160).optional(),

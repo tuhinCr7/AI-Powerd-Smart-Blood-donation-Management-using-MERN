@@ -136,7 +136,7 @@ export default function Home() {
                   <div className="score-bar mt-1">
                     <span style={{ width: `${p.score}%` }} />
                   </div>
-                  <p className="tiny muted mt-1">{p.km} km away · replies in ~15 min</p>
+                  <p className="tiny muted mt-1">{p.km} km away </p>
                 </div>
               </div>
             ))}
