@@ -35,7 +35,7 @@ const linksFor = (user) => {
   }
   return [
     { to: '/patient', label: 'Dashboard', end: true },
-    { to: '/patient/matches', label: 'AI matches' },
+    { to: '/patient/matches', label: 'Smart matches' },
     { to: '/patient/requests', label: 'My requests' },
     { to: '/chat', label: 'Messages' },
   ];

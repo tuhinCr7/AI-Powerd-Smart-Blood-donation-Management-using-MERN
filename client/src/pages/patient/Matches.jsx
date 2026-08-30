@@ -105,7 +105,7 @@ export default function Matches() {
 
   return (
     <AppPage
-      title="AI-recommended donors"
+      title="Smart-recommended donors"
       subtitle="Ranked on blood group first, then location. Only available donors are listed."
       actions={
         <>
