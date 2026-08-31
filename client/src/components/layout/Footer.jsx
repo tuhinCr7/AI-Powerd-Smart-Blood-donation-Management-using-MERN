@@ -12,7 +12,7 @@ export default function Footer() {
               LifeLink
             </div>
             <p className="small">
-              An AI-assisted blood donation network. Matching is a suggestion tool — every
+              A Smart blood donation network. Matching is a suggestion tool — every
               donation is still screened and verified at the collection centre.
             </p>
           </div>
